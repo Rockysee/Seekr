@@ -1,5 +1,6 @@
 streamlit>=1.28.0
-streamlit-webrtc>=0.47.0  # Optional - falls back to file upload if unavailable
+# Optional real-time recording (may fail in managed environments like Streamlit Cloud):
+# streamlit-webrtc>=0.47.0
 
 # State Machine & Logic
 transitions>=0.9.0
