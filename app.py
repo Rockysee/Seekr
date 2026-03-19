@@ -16,6 +16,51 @@ from integrations import create_orchestrator
 from config import settings
 import io
 import wave
+import soundfile as sf
+
+# ────────────────────────────────────────────────────────────────
+# HELPER FUNCTIONS
+# ────────────────────────────────────────────────────────────────
+
+def display_voice_analysis_results(result):
+    """Display voice analysis results in a consistent format"""
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Stress Score", f"{result.stress_score:.2f}")
+        st.progress(result.stress_score)
+
+    with col2:
+        st.metric("Confidence", f"{result.overall_confidence:.1%}")
+
+    with col3:
+        st.metric("Pitch Stability", f"{result.pitch_features['pitch_stability']:.2f}")
+
+    # Interpretation
+    st.markdown(f"**Analysis:** {result.interpretation}")
+
+    # Update resilience matrix
+    st.session_state.matrix.integrate_acoustic_marker(result.stress_score)
+
+    # Encrypt and store analysis
+    analysis_data = {
+        "stress_score": result.stress_score,
+        "interpretation": result.interpretation,
+        "timestamp": result.timestamp.isoformat(),
+        "features": {
+            "pitch": result.pitch_features,
+            "prosody": result.prosody_features,
+            "temporal": result.temporal_features
+        }
+    }
+
+    encrypted = st.session_state.data_vault.encrypt_health_record(
+        st.session_state.user_id,
+        analysis_data,
+        purpose="voice_analysis"
+    )
+
+    st.success("✅ Voice analysis stored securely!")
 
 # ────────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
@@ -279,74 +324,84 @@ def render_voice_input():
 
     st.info(f"📝 **Prompt:** \"{prompt_text}\"")
 
-    # Real voice recording with streamlit-webrtc
-    from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+    # Voice recording - try WebRTC first, fallback to file upload
+    st.markdown("### 🎤 Voice Stress Analysis")
+    st.info("Record your voice or upload an audio file to analyze acoustic biomarkers for stress detection.")
 
-    rtc_config = RTCConfiguration({
-        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-    })
+    # Try WebRTC (works locally, may fail in Streamlit Cloud)
+    webrtc_available = False
+    try:
+        from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+        webrtc_available = True
+    except ImportError as e:
+        st.warning("⚠️ Real-time recording not available in this environment. Please upload an audio file instead.")
+        webrtc_available = False
 
-    webrtc_ctx = webrtc_streamer(
-        key="voice_recorder",
-        mode=WebRtcMode.SENDONLY,
-        rtc_configuration=rtc_config,
-        media_stream_constraints={"video": False, "audio": True},
-        async_processing=True,
+    if webrtc_available:
+        # Real voice recording with streamlit-webrtc
+        rtc_config = RTCConfiguration({
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+        })
+
+        webrtc_ctx = webrtc_streamer(
+            key="voice_recorder",
+            mode=WebRtcMode.SENDONLY,
+            rtc_configuration=rtc_config,
+            media_stream_constraints={"video": False, "audio": True},
+            async_processing=True,
+        )
+
+        if webrtc_ctx.audio_receiver:
+            st.write("🎙️ Recording... Speak naturally for 5-10 seconds")
+
+            # Process audio when available
+            if webrtc_ctx.audio_receiver.get_frames():
+                audio_frames = webrtc_ctx.audio_receiver.get_frames()
+
+                if len(audio_frames) > 0:
+                    # Convert frames to numpy array
+                    audio_data = np.concatenate([frame.to_ndarray() for frame in audio_frames])
+                    sample_rate = audio_frames[0].sample_rate
+
+                    # Analyze voice stress
+                    result = st.session_state.voice_analyzer.analyze_audio_array(
+                        audio_data, sample_rate
+                    )
+
+                    # Display results
+                    display_voice_analysis_results(result)
+
+    # Fallback: File upload (always available)
+    st.markdown("#### 📁 Or Upload Audio File")
+    uploaded_file = st.file_uploader(
+        "Upload a WAV/MP3 file (5-10 seconds recommended)",
+        type=['wav', 'mp3', 'm4a'],
+        help="Upload a voice recording for stress analysis"
     )
 
-    if webrtc_ctx.audio_receiver:
-        st.write("🎙️ Recording... Speak naturally for 5-10 seconds")
+    if uploaded_file is not None:
+        try:
+            # Read uploaded file
+            audio_bytes = uploaded_file.read()
 
-        # Process audio when available
-        if webrtc_ctx.audio_receiver.get_frames():
-            audio_frames = webrtc_ctx.audio_receiver.get_frames()
+            # Convert to numpy array using soundfile
+            audio_data, sample_rate = sf.read(io.BytesIO(audio_bytes))
 
-            if len(audio_frames) > 0:
-                # Convert frames to numpy array
-                audio_data = np.concatenate([frame.to_ndarray() for frame in audio_frames])
-                sample_rate = audio_frames[0].sample_rate
+            # Ensure mono audio
+            if len(audio_data.shape) > 1:
+                audio_data = np.mean(audio_data, axis=1)
 
-                # Analyze voice stress
-                result = st.session_state.voice_analyzer.analyze_audio_array(
-                    audio_data, sample_rate
-                )
+            # Analyze voice stress
+            result = st.session_state.voice_analyzer.analyze_audio_array(
+                audio_data, sample_rate
+            )
 
-                # Display results
-                col1, col2, col3 = st.columns(3)
+            # Display results
+            display_voice_analysis_results(result)
 
-                with col1:
-                    st.metric("Stress Score", f"{result.stress_score:.2f}")
-                    st.progress(result.stress_score)
-
-                with col2:
-                    st.metric("Confidence", f"{result.overall_confidence:.1%}")
-
-                with col3:
-                    st.metric("Pitch Stability", f"{result.pitch_features['pitch_stability']:.2f}")
-
-                # Interpretation
-                st.markdown(f"**Analysis:** {result.interpretation}")
-
-                # Update resilience matrix
-                st.session_state.matrix.integrate_acoustic_marker(result.stress_score)
-
-                # Encrypt and store analysis
-                analysis_data = {
-                    "stress_score": result.stress_score,
-                    "interpretation": result.interpretation,
-                    "timestamp": result.timestamp.isoformat(),
-                    "features": {
-                        "pitch": result.pitch_features,
-                        "prosody": result.prosody_features,
-                        "temporal": result.temporal_features
-                    }
-                }
-
-                encrypted = st.session_state.data_vault.encrypt_health_record(
-                    st.session_state.user_id,
-                    analysis_data,
-                    purpose="voice_analysis"
-                )
+        except Exception as e:
+            st.error(f"Error processing audio file: {str(e)}")
+            st.info("Please ensure your file is a valid audio format (WAV/MP3) and try again.")
 
                 st.success("✅ Voice analysis complete and securely stored!")
 
