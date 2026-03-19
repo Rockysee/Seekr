@@ -415,16 +415,16 @@ def render_voice_input():
             # Display results
             display_voice_analysis_results(result)
 
+            st.success("✅ Voice analysis complete and securely stored!")
+
+            # Show updated dashboard
+            if st.button("📊 View Updated Dashboard"):
+                st.session_state.current_page = "dashboard"
+                st.rerun()
+
         except Exception as e:
             st.error(f"Error processing audio file: {str(e)}")
             st.info("Please ensure your file is a valid audio format (WAV/MP3) and try again.")
-
-                st.success("✅ Voice analysis complete and securely stored!")
-
-                # Show updated dashboard
-                if st.button("📊 View Updated Dashboard"):
-                    st.session_state.current_page = "dashboard"
-                    st.rerun()
 
     else:
         st.info("🎙️ Click 'START' above to begin voice recording")
