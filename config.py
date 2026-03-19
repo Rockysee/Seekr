@@ -2,7 +2,7 @@
 
 Loads environment variables from:
 - .env file (local development)
-- Streamlit secrets.toml (Streamlit Cloud)
+- Streamlit secrets.toml (Streamlit Cloud, auto-converted to env vars)
 - Environment variables (production)
 
 This module centralizes configuration for:
@@ -16,34 +16,23 @@ The .env file should not be committed to version control.
 
 from __future__ import annotations
 
-import os
 from typing import Optional
 
 from dotenv import load_dotenv
-try:
-    # Pydantic v2 imports
-    from pydantic import Field, HttpUrl, SecretStr
-    from pydantic_settings import BaseSettings
-    PYDANTIC_V2 = True
-except ImportError:
-    # Fallback for Pydantic v1
-    from pydantic import BaseSettings, Field, HttpUrl, SecretStr
-    PYDANTIC_V2 = False
-
-# Try to load from Streamlit context first
-try:
-    import streamlit as st
-    STREAMLIT_CONTEXT = st.secrets if hasattr(st, 'secrets') else {}
-except (ImportError, RuntimeError):
-    # Not in Streamlit context (e.g., unit tests, CLI)
-    STREAMLIT_CONTEXT = {}
+from pydantic import Field, HttpUrl, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load .env from project root (local development)
 load_dotenv()
 
 
-
 class Settings(BaseSettings):
+    """Configuration settings for The Resilience Matrix.
+    
+    In development: loads from .env file
+    In Streamlit Cloud: loads from secrets.toml (auto-converted to env vars)
+    """
+
     # Core app settings
     APP_NAME: str = Field("Resilience Matrix", description="Human-friendly application name")
     ENV: str = Field("development", description="Application environment")
@@ -72,30 +61,12 @@ class Settings(BaseSettings):
     WHATSAPP_ACCESS_TOKEN: Optional[SecretStr] = None
     WHATSAPP_BUSINESS_ACCOUNT_ID: Optional[str] = None
 
-
-# Configure the Settings class based on Pydantic version
-if PYDANTIC_V2:
-    Settings.model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-    }
-else:
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-    Settings.Config = Config
-
-
-def settings_customise_sources(cls, init_settings, env_settings, file_settings, settings_cls):
-    """Load configuration from Streamlit secrets first, then env vars, then .env file."""
-    # Merge Streamlit secrets into env_settings
-    fields = cls.model_fields if PYDANTIC_V2 else cls.__fields__
-    for key in fields:
-        if key in STREAMLIT_CONTEXT:
-            env_settings.setdefault(key, STREAMLIT_CONTEXT[key])
-    return (init_settings, env_settings, file_settings)
-
-Settings.settings_customise_sources = classmethod(settings_customise_sources)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        # Prioritize environment variables over defaults
+        case_sensitive=False,
+    )
 
 
 # Global settings instance for imports
@@ -113,4 +84,4 @@ def ensure_required_settings() -> None:
 
 
 if __name__ == "__main__":
-    print(settings.json(indent=2, exclude_none=True))
+    print(settings.model_dump_json(indent=2, exclude_none=True))
