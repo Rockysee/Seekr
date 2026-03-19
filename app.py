@@ -4,7 +4,6 @@ Streamlit-based UI with Dual-Continua visualization and voice input
 """
 
 import streamlit as st
-import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
@@ -304,11 +303,28 @@ def render_health_dashboard():
     # Trajectory chart
     trajectory = st.session_state.matrix.get_trajectory()
     if len(trajectory) > 1:
-        df = pd.DataFrame({
-            "Timestamp": [cp.timestamp for cp in trajectory],
-            "Score": [cp.score for cp in trajectory]
-        })
-        st.line_chart(df.set_index("Timestamp")["Score"])
+        timestamps = [cp.timestamp for cp in trajectory]
+        scores = [cp.score for cp in trajectory]
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=timestamps,
+                y=scores,
+                mode="lines+markers",
+                name="Score",
+                line=dict(color="#4B8BBE", width=3),
+                marker=dict(size=6),
+            )
+        )
+        fig.update_layout(
+            title="Progress Over Time",
+            xaxis_title="Timestamp",
+            yaxis_title="Score",
+            height=350,
+            margin=dict(l=40, r=40, t=40, b=40),
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 
 # ────────────────────────────────────────────────────────────────
