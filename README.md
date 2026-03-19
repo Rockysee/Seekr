@@ -56,3 +56,4 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for step-by-step instructions.
 docker compose up --build
 ```
 Runs on `http://localhost:8501`
+# Seekr
