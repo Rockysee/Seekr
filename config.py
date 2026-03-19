@@ -20,7 +20,15 @@ import os
 from typing import Optional
 
 from dotenv import load_dotenv
-from pydantic import BaseSettings, Field, HttpUrl, SecretStr
+try:
+    # Pydantic v2 imports
+    from pydantic import Field, HttpUrl, SecretStr
+    from pydantic_settings import BaseSettings
+    PYDANTIC_V2 = True
+except ImportError:
+    # Fallback for Pydantic v1
+    from pydantic import BaseSettings, Field, HttpUrl, SecretStr
+    PYDANTIC_V2 = False
 
 # Try to load from Streamlit context first
 try:
@@ -64,18 +72,30 @@ class Settings(BaseSettings):
     WHATSAPP_ACCESS_TOKEN: Optional[SecretStr] = None
     WHATSAPP_BUSINESS_ACCOUNT_ID: Optional[str] = None
 
+
+# Configure the Settings class based on Pydantic version
+if PYDANTIC_V2:
+    Settings.model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+    }
+else:
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+    Settings.Config = Config
 
-    @classmethod
-    def settings_customise_sources(cls, init_settings, env_settings, file_settings, settings_cls):
-        """Load configuration from Streamlit secrets first, then env vars, then .env file."""
-        # Merge Streamlit secrets into env_settings
-        for key in cls.__fields__:
-            if key in STREAMLIT_CONTEXT:
-                env_settings.setdefault(key, STREAMLIT_CONTEXT[key])
-        return (init_settings, env_settings, file_settings)
+
+def settings_customise_sources(cls, init_settings, env_settings, file_settings, settings_cls):
+    """Load configuration from Streamlit secrets first, then env vars, then .env file."""
+    # Merge Streamlit secrets into env_settings
+    fields = cls.model_fields if PYDANTIC_V2 else cls.__fields__
+    for key in fields:
+        if key in STREAMLIT_CONTEXT:
+            env_settings.setdefault(key, STREAMLIT_CONTEXT[key])
+    return (init_settings, env_settings, file_settings)
+
+Settings.settings_customise_sources = classmethod(settings_customise_sources)
 
 
 # Global settings instance for imports
