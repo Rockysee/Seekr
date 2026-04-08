@@ -3,8 +3,8 @@ import StyleBlender from "../StyleBlender.jsx";
 import StyleApplicator from "../StyleApplicator.jsx";
 
 const TABS = [
-  { id: "blender",    label: "Style Blender",    icon: "⬡" },
-  { id: "applicator", label: "Style Applicator",  icon: "⌁" },
+  { id: "blender",    label: "Template Browser", icon: "⬡" },
+  { id: "applicator", label: "Bookmarklet Kit",  icon: "⌁" },
 ];
 
 export default function App() {
